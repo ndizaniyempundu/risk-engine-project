@@ -1,14 +1,15 @@
 #include <iostream>
 #include <cmath>
 #include <random>
+#include <vector>
+#include <string>
+#include <sqlite3.h>
 #include <Eigen/Dense>
 
 class CopulaEngine {
 public:
     CopulaEngine(const Eigen::MatrixXd& corrMatrix) : corr_(corrMatrix) {}
 
-    // Breaks corr_ into L such that L * L^T = corr_. Eigen::LLT does the
-    // actual math -- we're just calling it and checking it succeeded.
     Eigen::MatrixXd choleskyDecompose() const {
         Eigen::LLT<Eigen::MatrixXd> llt(corr_);
         if (llt.info() != Eigen::Success) {
@@ -17,14 +18,11 @@ public:
         return llt.matrixL();
     }
 
-    // Generates nSims draws of correlated standard normals. Each row = one
-    // simulation, each column = one asset. This is the building block for
-    // every simulation-based method later (Monte Carlo VaR, stress paths, etc.)
     Eigen::MatrixXd simulateGaussian(int nSims) const {
         Eigen::MatrixXd L = choleskyDecompose();
         int nAssets = corr_.rows();
 
-        std::mt19937 gen(42);  // fixed seed -- reproducible while we're testing
+        std::mt19937 gen(42);
         std::normal_distribution<double> stdNormal(0.0, 1.0);
 
         Eigen::MatrixXd simulations(nSims, nAssets);
@@ -42,35 +40,63 @@ private:
     Eigen::MatrixXd corr_;
 };
 
+// Loads log returns for all 5 assets (asset_id 1-5) and aligns them by
+// position (a simplification -- EURUSD=X trades on days equities don't,
+// as we saw back in Week 1, so this isn't perfectly date-aligned yet).
+Eigen::MatrixXd loadReturnsMatrix(const std::string& dbPath, int nAssets) {
+    sqlite3* db;
+    sqlite3_open(dbPath.c_str(), &db);
+
+    std::vector<std::vector<double>> allReturns(nAssets);
+    size_t minLength = SIZE_MAX;
+
+    for (int assetId = 1; assetId <= nAssets; assetId++) {
+        std::string sql = "SELECT log_return FROM prices WHERE asset_id = ? AND log_return IS NOT NULL ORDER BY date ASC;";
+        sqlite3_stmt* stmt;
+        sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+        sqlite3_bind_int(stmt, 1, assetId);
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            allReturns[assetId - 1].push_back(sqlite3_column_double(stmt, 0));
+        }
+        sqlite3_finalize(stmt);
+        minLength = std::min(minLength, allReturns[assetId - 1].size());
+    }
+    sqlite3_close(db);
+
+    Eigen::MatrixXd returns(minLength, nAssets);
+    for (int col = 0; col < nAssets; col++) {
+        for (size_t row = 0; row < minLength; row++) {
+            returns(row, col) = allReturns[col][row];
+        }
+    }
+    return returns;
+}
+
+Eigen::MatrixXd computeCorrelation(const Eigen::MatrixXd& returns) {
+    Eigen::MatrixXd centered = returns.rowwise() - returns.colwise().mean();
+    Eigen::MatrixXd cov = (centered.transpose() * centered) / (returns.rows() - 1);
+
+    Eigen::VectorXd stdDevs = cov.diagonal().array().sqrt();
+    Eigen::MatrixXd corr = cov;
+    for (int i = 0; i < corr.rows(); i++) {
+        for (int j = 0; j < corr.cols(); j++) {
+            corr(i, j) /= (stdDevs(i) * stdDevs(j));
+        }
+    }
+    return corr;
+}
+
 int main() {
-    // Simple 2-asset test case with a known 0.5 correlation. We'll swap
-    // this for your real 5-asset correlation matrix next.
-    Eigen::MatrixXd corr(2, 2);
-    corr << 1.0, 0.5,
-            0.5, 1.0;
+    Eigen::MatrixXd returns = loadReturnsMatrix("data/risk_engine.db", 5);
+    std::cout << "Loaded returns matrix: " << returns.rows() << " rows x " << returns.cols() << " assets\n\n";
+
+    Eigen::MatrixXd corr = computeCorrelation(returns);
+    std::cout << "Correlation matrix (SPY, IEF, EURUSD=X, GC=F, NG=F):\n" << corr << "\n\n";
 
     CopulaEngine engine(corr);
-
     Eigen::MatrixXd L = engine.choleskyDecompose();
-    std::cout << "Cholesky factor L:\n" << L << "\n\n";
-
-    int nSims = 100000;
-    Eigen::MatrixXd sims = engine.simulateGaussian(nSims);
-
-    // Compute the empirical correlation of the simulated output -- this is
-    // the actual proof the simulation is correct, not just "it ran."
-    Eigen::VectorXd col0 = sims.col(0);
-    Eigen::VectorXd col1 = sims.col(1);
-    double mean0 = col0.mean();
-    double mean1 = col1.mean();
-
-    double cov = ((col0.array() - mean0) * (col1.array() - mean1)).mean();
-    double std0 = std::sqrt((col0.array() - mean0).square().mean());
-    double std1 = std::sqrt((col1.array() - mean1).square().mean());
-    double empiricalCorr = cov / (std0 * std1);
-
-    std::cout << "Target correlation: 0.5" << std::endl;
-    std::cout << "Empirical correlation from " << nSims << " sims: " << empiricalCorr << std::endl;
+    std::cout << "Cholesky factor:\n" << L << std::endl;
 
     return 0;
 }
