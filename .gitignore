@@ -4,3 +4,7 @@ __pycache__/
 *.db
 build/
 .DS_Store
+
+.vscode/
+build/
+*.db
