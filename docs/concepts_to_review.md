@@ -21,3 +21,8 @@
 - **Method divergence is the actual finding, not noise**: Historical Simulation's 99% CVaR ($28,408) is ~35% higher than Parametric's ($21,611) on the same portfolio -- this is Module 2's proven fat-tail/excess-kurtosis finding showing up concretely in dollar terms. Parametric VaR structurally cannot see this since it assumes normality.
 - **Component VaR sums exactly to total VaR** (Euler's theorem for homogeneous functions) -- verified numerically: components summed to $13,275.0, matching total parametric VaR exactly.
 - **NG=F drives ~89% of portfolio risk despite 20% capital weight** -- its 3.84% daily volatility (vs ~1% for other assets) dominates the risk budget even at equal dollar allocation. This is the practical meaning of Marginal VaR: it tells you which position to trim first if you need to cut risk.
+
+## Module 6 — Stress Testing
+- **Stress outcomes depend on actual exposures, not scenario severity**: the Texas Freeze and Taiwan Conflict scenarios show POSITIVE portfolio P&L, since the portfolio is long NG=F/GC=F, which benefit from energy/gold spikes. A short position would see the opposite sign on identical scenarios.
+- **2022 showed correlation breakdown**: equities, bonds, and the dollar all fell together (violating the normal stock/bond diversification pattern) -- only offset by an unrelated NG=F spike from the energy shock. This is a real historical anomaly, not a typical year.
+- **Reverse stress test uses scaled scenario shapes rather than unconstrained search**: finds what multiple of a *named* historical scenario (e.g., 1.4x a 2008-shaped shock) produces a target loss -- more interpretable than searching arbitrary shock combinations, at the cost of only exploring shocks shaped like scenarios we've already defined.
