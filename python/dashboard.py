@@ -77,3 +77,48 @@ fig_comp = px.bar(comp_var_df, x="Asset", y="Component VaR",
                    title="Risk Contribution by Asset", text_auto=".2s")
 st.plotly_chart(fig_comp, use_container_width=True)
 st.caption(f"Sum of components: ${component_var.sum():,.2f} (should match total Parametric VaR)")
+
+# --- Stress test ---
+st.header("Stress Test Scenarios")
+scenario_results = engine.run_all_scenarios()
+scenario_df = pd.DataFrame(scenario_results, columns=["Scenario", "P&L"])
+scenario_df = scenario_df.sort_values("P&L")
+
+colors = ["crimson" if v < 0 else "seagreen" for v in scenario_df["P&L"]]
+fig_stress = go.Figure(go.Bar(
+    x=scenario_df["Scenario"],
+    y=scenario_df["P&L"],
+    text=[f"${v:,.0f}" for v in scenario_df["P&L"]],
+    textposition="outside",
+    marker_color=colors,
+    cliponaxis=False
+))
+fig_stress.update_layout(
+    title="Portfolio P&L by Stress Scenario",
+    showlegend=False,
+    yaxis_range=[scenario_df["P&L"].min() * 1.15, scenario_df["P&L"].max() * 1.15],
+    margin=dict(t=60)
+)
+st.plotly_chart(fig_stress, use_container_width=True)
+
+worst_idx = scenario_df["P&L"].idxmin()
+st.caption(f"Worst-case scenario: {scenario_df.loc[worst_idx, 'Scenario']} "
+           f"(Loss = ${abs(scenario_df.loc[worst_idx, 'P&L']):,.2f})")
+
+# --- P&L distribution histogram with VaR/CVaR lines ---
+st.header("Simulated Portfolio P&L Distribution")
+pnl_dist = engine.get_portfolio_pnl_distribution(100000)
+pnl_df = pd.DataFrame({"P&L": pnl_dist})
+
+var_line = -engine.monte_carlo_var(confidence_level, 100000)
+cvar_line = -engine.monte_carlo_cvar(confidence_level, 100000)
+
+fig_hist = px.histogram(pnl_df, x="P&L", nbins=100, title="1-Day Simulated P&L Distribution (Monte Carlo)")
+
+fig_hist.add_vline(x=var_line, line_dash="dash", line_color="orange",
+                    annotation_text=f"VaR ({int(confidence_level*100)}%)",
+                    annotation_position="top")
+fig_hist.add_vline(x=cvar_line, line_dash="dash", line_color="red",
+                    annotation_text=f"CVaR ({int(confidence_level*100)}%)",
+                    annotation_position="bottom")
+st.plotly_chart(fig_hist, use_container_width=True)
