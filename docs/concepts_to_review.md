@@ -12,3 +12,12 @@
 - Skewness: -0.80 (confirms real crashes are sharper than real rallies)
 - Excess kurtosis: 13.99 (dramatically fatter tails than a normal distribution predicts — largely driven by the March 2020 COVID crash sitting in the dataset)
 - Jarque-Bera: ~22,842 (normality is rejected at any reasonable significance threshold, which is typically around 6)
+
+## Module 4 — Monte Carlo Engine
+- **Variance reduction implemented**: antithetic variates (pairing each random draw z with -z), which measurably improved VaR estimate stability with fewer simulations.
+- **Quasi-Monte Carlo (Sobol) noted as a future extension**: true Sobol sequence generation requires precomputed direction numbers and careful bit-manipulation logic that wasn't worth the implementation risk given the project timeline. A Halton sequence (same "low-discrepancy sequence" family, much simpler to implement correctly) would be the natural first step if extending this further.
+
+## Module 5 — VaR & CVaR
+- **Method divergence is the actual finding, not noise**: Historical Simulation's 99% CVaR ($28,408) is ~35% higher than Parametric's ($21,611) on the same portfolio -- this is Module 2's proven fat-tail/excess-kurtosis finding showing up concretely in dollar terms. Parametric VaR structurally cannot see this since it assumes normality.
+- **Component VaR sums exactly to total VaR** (Euler's theorem for homogeneous functions) -- verified numerically: components summed to $13,275.0, matching total parametric VaR exactly.
+- **NG=F drives ~89% of portfolio risk despite 20% capital weight** -- its 3.84% daily volatility (vs ~1% for other assets) dominates the risk budget even at equal dollar allocation. This is the practical meaning of Marginal VaR: it tells you which position to trim first if you need to cut risk.
